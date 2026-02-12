@@ -6,6 +6,13 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// --- 🌟 就在這裡加入這段代碼 🌟 ---
+// 當有人開啟網址首頁時，把 index.html 傳送給瀏覽器看
+app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/index.html');
+});
+// --------------------------------
+
 // 從環境變數讀取金鑰，保護安全
 const CLIENT_ID = 'C2C4676F-EAA2-4AE7-BB01-38608072FF55';
 const CLIENT_SECRET = process.env.NEXAR_SECRET;
@@ -76,7 +83,7 @@ app.post('/api/search', async (req, res) => {
         }
 
         const specs = [mainVal, mat, tol, vol, pwr, pdesc].filter(v => v).join(" ");
-        const finalSummary = `${prefix} ${specs} _${part.mpn}${pkg ? '_' + pkg : ''}`;
+        const finalSummary = `${prefix} specs _${part.mpn}${pkg ? '_' + pkg : ''}`;
 
         res.json({ summary: finalSummary, pdf: part.bestDatasheet?.url });
     } catch (err) {
