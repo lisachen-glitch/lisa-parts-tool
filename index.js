@@ -12,7 +12,7 @@ app.get('/', (req, res) => {
 });
 
 const CLIENT_ID = 'C2C4676F-EAA2-4AE7-BB01-38608072FF55';
-const CLIENT_SECRET = process.env.NEXAR_SECRET;
+const CLIENT_SECRET =3z7L9m5ZqiL37JsszpxO2m4Z31O9hfUEZolB;
 
 async function getNexarToken() {
     const res = await axios.post('https://identity.nexar.com/connect/token', new URLSearchParams({
@@ -93,4 +93,5 @@ app.post('/api/search', async (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));|| 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
