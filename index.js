@@ -6,7 +6,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// 讓首頁正常顯示
+// 首頁路由：確保打開網址就能看到畫面
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/index.html');
 });
@@ -52,40 +52,47 @@ app.post('/api/search', async (req, res) => {
 
         const part = results[0].part;
         const catName = (part.category?.name || "").toLowerCase();
+        
+        // 初始化變數，給予空字串避免出現 undefined
         let prefix = "Power IC", mainVal = "", mat = "", tol = "", vol = "", pkg = "", pwr = "", pdesc = "";
 
+        // 智慧前綴判定
         if (catName.includes("capacitor")) prefix = "Capacitor MLCC";
         else if (catName.includes("resistor")) prefix = "Resistor Thick Film";
         else if (catName.includes("mosfet")) prefix = "Power Mosfet";
         else if (catName.includes("diode")) prefix = "Discrete Diode";
 
-        part.specs.forEach(s => {
-            const name = s.attribute.name.toLowerCase();
-            const val = s.displayValue;
-            if (name.includes("package") || name.includes("case style")) { if(!pkg) pkg = val; }
-            if (name.includes("capacitance") || name.includes("resistance")) mainVal = val.replace(/\s/g, "");
-            if (name.includes("tolerance")) tol = val.includes("±") ? val : "±" + val;
-            if (name.includes("voltage") && (name.includes("rated") || name.includes("dc"))) vol = val;
-            if (name.includes("power rating")) pwr = val;
-            if (name.includes("dielectric") || name.includes("composition")) mat = val;
-            if (prefix.includes("Mosfet") && (val.includes("p-channel") || val.includes("n-channel") || name.includes("polarity"))) pdesc = val;
-        });
+        // 提取規格
+        if (part.specs) {
+            part.specs.forEach(s => {
+                const name = s.attribute.name.toLowerCase();
+                const val = s.displayValue;
+                if (name.includes("package") || name.includes("case style")) { if(!pkg) pkg = val; }
+                if (name.includes("capacitance") || name.includes("resistance")) mainVal = val.replace(/\s/g, "");
+                if (name.includes("tolerance")) tol = val.includes("±") ? val : "±" + val;
+                if (name.includes("voltage") && (name.includes("rated") || name.includes("dc"))) vol = val;
+                if (name.includes("power rating")) pwr = val;
+                if (name.includes("dielectric") || name.includes("composition")) mat = val;
+                if (prefix.includes("Mosfet") && (val.toLowerCase().includes("channel") || name.includes("polarity"))) pdesc = val;
+            });
+        }
 
+        // 封裝補強
         const m = mpn.toUpperCase();
         if (!pkg && prefix.includes("Resistor")) {
             if (m.includes("WW12") || m.includes("1206")) pkg = "1206";
             else if (m.includes("WW06") || m.includes("0603")) pkg = "0603";
         }
 
-        // 核心修正：確保組合邏輯正確，不出現 undefined
-        const specsArr = [mainVal, mat, tol, vol, pwr, pdesc].filter(v => v && v !== "");
+        // 組合摘要字串：過濾掉空值，確保不出現 undefined
+        const specsArr = [mainVal, mat, tol, vol, pwr, pdesc].filter(v => v && v.length > 0);
         const specsStr = specsArr.join(" ");
         const finalSummary = `${prefix} ${specsStr} _${part.mpn}${pkg ? '_' + pkg : ''}`;
 
         res.json({ summary: finalSummary, pdf: part.bestDatasheet?.url });
     } catch (err) {
         console.error(err);
-        res.status(500).json({ error: "Server Error" });
+        res.status(500).json({ error: "伺服器內部錯誤" });
     }
 });
 
