@@ -6,7 +6,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// 首頁路由：確保打開網址就能看到畫面
+// 首頁路由：確保打開網址就能看到搜尋畫面
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/index.html');
 });
@@ -53,16 +53,13 @@ app.post('/api/search', async (req, res) => {
         const part = results[0].part;
         const catName = (part.category?.name || "").toLowerCase();
         
-        // 初始化變數，給予空字串避免出現 undefined
         let prefix = "Power IC", mainVal = "", mat = "", tol = "", vol = "", pkg = "", pwr = "", pdesc = "";
 
-        // 智慧前綴判定
         if (catName.includes("capacitor")) prefix = "Capacitor MLCC";
         else if (catName.includes("resistor")) prefix = "Resistor Thick Film";
         else if (catName.includes("mosfet")) prefix = "Power Mosfet";
         else if (catName.includes("diode")) prefix = "Discrete Diode";
 
-        // 提取規格
         if (part.specs) {
             part.specs.forEach(s => {
                 const name = s.attribute.name.toLowerCase();
@@ -77,24 +74,23 @@ app.post('/api/search', async (req, res) => {
             });
         }
 
-        // 封裝補強
         const m = mpn.toUpperCase();
         if (!pkg && prefix.includes("Resistor")) {
             if (m.includes("WW12") || m.includes("1206")) pkg = "1206";
             else if (m.includes("WW06") || m.includes("0603")) pkg = "0603";
         }
 
-        // 組合摘要字串：過濾掉空值，確保不出現 undefined
-        const specsArr = [mainVal, mat, tol, vol, pwr, pdesc].filter(v => v && v.length > 0);
+        const specsArr = [mainVal, mat, tol, vol, pwr, pdesc].filter(v => v && v.trim() !== "");
         const specsStr = specsArr.join(" ");
         const finalSummary = `${prefix} ${specsStr} _${part.mpn}${pkg ? '_' + pkg : ''}`;
 
         res.json({ summary: finalSummary, pdf: part.bestDatasheet?.url });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: "伺服器內部錯誤" });
+        res.status(500).json({ error: "Server Error" });
     }
 });
 
 const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));|| 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
