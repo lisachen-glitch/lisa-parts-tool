@@ -6,14 +6,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// --- 🌟 就在這裡加入這段代碼 🌟 ---
-// 當有人開啟網址首頁時，把 index.html 傳送給瀏覽器看
+// 讓首頁正常顯示
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/index.html');
 });
-// --------------------------------
 
-// 從環境變數讀取金鑰，保護安全
 const CLIENT_ID = 'C2C4676F-EAA2-4AE7-BB01-38608072FF55';
 const CLIENT_SECRET = process.env.NEXAR_SECRET;
 
@@ -57,7 +54,6 @@ app.post('/api/search', async (req, res) => {
         const catName = (part.category?.name || "").toLowerCase();
         let prefix = "Power IC", mainVal = "", mat = "", tol = "", vol = "", pkg = "", pwr = "", pdesc = "";
 
-        // 智慧分類邏輯
         if (catName.includes("capacitor")) prefix = "Capacitor MLCC";
         else if (catName.includes("resistor")) prefix = "Resistor Thick Film";
         else if (catName.includes("mosfet")) prefix = "Power Mosfet";
@@ -72,21 +68,23 @@ app.post('/api/search', async (req, res) => {
             if (name.includes("voltage") && (name.includes("rated") || name.includes("dc"))) vol = val;
             if (name.includes("power rating")) pwr = val;
             if (name.includes("dielectric") || name.includes("composition")) mat = val;
-            if (prefix.includes("Mosfet") && (val.includes("P-Channel") || val.includes("N-Channel"))) pdesc = val;
+            if (prefix.includes("Mosfet") && (val.includes("p-channel") || val.includes("n-channel") || name.includes("polarity"))) pdesc = val;
         });
 
-        // 封裝補強
         const m = mpn.toUpperCase();
         if (!pkg && prefix.includes("Resistor")) {
             if (m.includes("WW12") || m.includes("1206")) pkg = "1206";
             else if (m.includes("WW06") || m.includes("0603")) pkg = "0603";
         }
 
-        const specs = [mainVal, mat, tol, vol, pwr, pdesc].filter(v => v).join(" ");
-        const finalSummary = `${prefix} specs _${part.mpn}${pkg ? '_' + pkg : ''}`;
+        // 核心修正：確保組合邏輯正確，不出現 undefined
+        const specsArr = [mainVal, mat, tol, vol, pwr, pdesc].filter(v => v && v !== "");
+        const specsStr = specsArr.join(" ");
+        const finalSummary = `${prefix} ${specsStr} _${part.mpn}${pkg ? '_' + pkg : ''}`;
 
         res.json({ summary: finalSummary, pdf: part.bestDatasheet?.url });
     } catch (err) {
+        console.error(err);
         res.status(500).json({ error: "Server Error" });
     }
 });
