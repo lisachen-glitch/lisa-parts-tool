@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>13碼 BOM 物料編碼與防重系統</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background-color: #f8f9fa; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    .card-header { font-weight: 600; }
+    
+    /* 13碼 BOM 表格樣式 */
+    .bom-table select, .bom-table input, .bom-table textarea { 
+      font-size: 0.85rem; 
+      padding: 0.25rem 0.4rem; 
+    }
+    .bom-table th { background-color: #e9ecef; font-size: 0.85rem; white-space: nowrap; vertical-align: middle; }
+    
+    /* 讓自動生成品名與備註可以完整顯示所有文字 */
+    .part-name, .remark {
+      resize: vertical;
+      min-height: 38px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* 防重警告樣式 (整列亮紅) */
+    tr.duplicate-row { background-color: #fee2e2 !important; }
+    tr.duplicate-row td { border-color: #fca5a5 !important; }
+    .warning-text { color: #dc2626; font-weight: bold; font-size: 0.85rem; }
+    .normal-text { color: #198754; font-weight: bold; font-size: 0.85rem; }
+  </style>
+</head>
+<body class="p-3 p-md-4">
+  <div class="container-fluid">
+    
+    <header class="d-flex align-items-center justify-content-between pb-3 mb-4 border-bottom">
+      <h3 class="text-primary fw-bold">🛠️ 13碼 BOM 物料編碼與自動品名生成系統</h3>
+      <span class="badge bg-dark">v3.0 Web App</span>
+    </header>
+
+    <div class="card shadow-sm">
+      <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+        <span>開碼作業區</span>
+        <div>
+          <button class="btn btn-light btn-sm fw-bold me-2" onclick="addBomRow()">+ 新增列</button>
+          <button class="btn btn-warning btn-sm fw-bold me-2" onclick="clearAllRows()">🧹 清除全部資料</button>
+          <button class="btn btn-success btn-sm fw-bold" onclick="exportBomCSV()">📥 匯出 CSV (Excel)</button>
+        </div>
+      </div>
+      <div class="card-body p-0 table-responsive">
+        <table class="table table-bordered align-middle bom-table mb-0" id="bomTable">
+          <thead class="text-center">
+            <tr>
+              <th style="width: 50px;">行號</th>
+              <th style="width: 120px;">產品狀態</th>
+              <th style="width: 90px;">機種代號</th>
+              <th style="min-width: 160px;">分件別</th>
+              <th style="width: 65px;">分件<br>流水號</th>
+              <th style="min-width: 160px;">分件材質</th>
+              <th style="width: 65px;">修模<br>次數</th>
+              <th style="min-width: 160px;">分件顏色</th>
+              <th style="width: 65px;">印刷<br>流水號</th>
+              <th style="width: 140px;">13碼料號</th>
+              <th style="min-width: 220px;">自動生成品名</th>
+              <th style="min-width: 180px;">備註 (客戶料號/說明)</th>
+              <th style="width: 140px;">重複料號檢查</th>
+              <th style="width: 110px;">操作</th>
+            </tr>
+          </thead>
+          <tbody id="bomTableBody">
+            <!-- 動態資料列 -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // ------------------------------------
+    // 對照表資料庫
+    // ------------------------------------
+    const BOM_STATUS_DATA = [
+      { name: "採購品", code: "B" },
+      { name: "半成品", code: "S" },
+      { name: "成品", code: "M" },
+      { name: "客供料", code: "C" },
+      { name: "自產零件", code: "P" }
+    ];
+
+    const BOM_CATEGORY_DATA = [
+      { name: "PSA ( 壓敏膠 /感壓膠 )", code: "AD" },
+      { name: "Adhesive Die-cut (沖型背膠/模切膠)", code: "AD" },
+      { name: "Back Case (後蓋)", code: "BC" },
+      { name: "Battery Holder (電池固定座/電池夾)", code: "BH" },
+      { name: "Button (鈕、鍵)", code: "BT" },
+      { name: "Cap (帽蓋 /套蓋)", code: "CA" },
+      { name: "Cover (裝飾件)", code: "CV" },
+      { name: "EMI Finger (金屬夾片)", code: "EF" },
+      { name: "Battery Contact (電池彈簧)", code: "EP" },
+      { name: "Fastener (緊固件=螺絲+墊片)", code: "FA" },
+      { name: "Front Case (前殼)", code: "FC" },
+      { name: "Rubber Foot(腳墊)", code: "FT" },
+      { name: "Silicone Pad (腳墊)", code: "FT" },
+      { name: "Base Glides (腳墊)", code: "FT" },
+      { name: "Gear (齒輪)", code: "GE" },
+      { name: "Holder (支架)", code: "HO" },
+      { name: "Insert (銅螺母)", code: "IN" },
+      { name: "LENS (鏡片 / 透鏡)", code: "LE" },
+      { name: "Light Guide (導光件)", code: "LG" },
+      { name: "Neodymium Magnet (釹鐵硼磁鐵/強磁)", code: "MA" },
+      { name: "Ferrite Magnet (鐵氧體磁鐵/陶瓷磁鐵)", code: "MA" },
+      { name: "Disc Magnet (圓片磁鐵)", code: "MA" },
+      { name: "Middle Case (中框)", code: "MC" },
+      { name: "Mount (支架)", code: "MT" },
+      { name: "Mylar (麥拉片 / 絕緣片)", code: "MY" },
+      { name: "Hex Nut (六角螺母)", code: "NT" },
+      { name: "Lock Nut (防鬆螺母)", code: "NT" },
+      { name: "Nut (螺母)", code: "NT" },
+      { name: "Cleaning Solvents (清潔溶劑)", code: "OP" },
+      { name: "Process Chemicals (製程化學品)", code: "OP" },
+      { name: "Industrial Tapes (膠帶類)", code: "OP" },
+      { name: "Screen Protector (螢幕保護貼)", code: "PF" },
+      { name: "PE Protective Film (PE 保護膜)", code: "PE" },
+      { name: "PET Protective Film (PET 保護膜)", code: "PT" },
+      { name: "Machine Screw (機械螺絲)", code: "SC" },
+      { name: "Tapping Screw (自攻螺絲)", code: "SC" },
+      { name: "Set Screw (無頭螺絲)", code: "SC" },
+      { name: "Captive Screw (防掉落螺絲)", code: "SC" },
+      { name: "Shielding Cover (屏蔽蓋)", code: "SH" },
+      { name: "Shielding Can (金屬小罩子)", code: "SH" },
+      { name: "Spacer (間隔柱=沒有螺紋)", code: "SO" },
+      { name: "Standoff (間隔柱=自帶螺紋)", code: "SO" },
+      { name: "Compression Spring (壓簧/壓縮彈簧)", code: "SP" },
+      { name: "Torsion Spring (扭簧/扭轉彈簧)", code: "SP" },
+      { name: "Flat Spring (金屬彈片)", code: "SP" },
+      { name: "Cable Clamp (線夾)", code: "SR" },
+      { name: "Cord Clamp (固線夾)", code: "SR" },
+      { name: "Shutter (滑蓋/遮門)", code: "ST" },
+      { name: "Lid/Top (蓋子/上蓋)", code: "TP" },
+      { name: "Battery Cover (塑膠電池蓋)", code: "VB" },
+      { name: "Waterproof Gasket (防水橡膠框)", code: "WP" },
+      { name: "Waterproof Plug (防水塞)", code: "WP" },
+      { name: "Shim (調整墊片)", code: "WS" },
+      { name: "Insulation Washer (絕緣墊片)", code: "WS" }
+    ];
+
+    const BOM_MATERIAL_DATA = [
+      { name: "泛用硬塑膠 (ABS, PP, PE, PS)", code: "A" },
+      { name: "透明/工程塑膠 (PC, PMMA, PET)", code: "B" },
+      { name: "工程/耐磨塑膠 (POM, PEEK, PPS)", code: "C" },
+      { name: "複材/加纖塑膠 (PC+ABS, PA66+GF)", code: "E" },
+      { name: "熱塑性軟膠 (TPE, TPR, TPU, 軟質 PVC)", code: "F" },
+      { name: "橡膠 (NBR, EPDM, CR)", code: "G" },
+      { name: "鐵 / 碳鋼 (SPCC, S45C, 鐵板, 鋼線)", code: "H" },
+      { name: "不鏽鋼 (SUS304, SUS316)", code: "J" },
+      { name: "銅 / 銅合金 (黃銅 (C3604), 紅銅, 青銅)", code: "K" },
+      { name: "鋁 / 鋁合金 (AL6061, AL7075)", code: "L" },
+      { name: "鋅 / 鎂合金 (鋅合金 (Zamak), 鎂合金)", code: "M" },
+      { name: "尼龍 (PA6, PA66)", code: "N" },
+      { name: "發泡材/泡棉 (EVA, PU Foam, EPE)", code: "P" },
+      { name: "矽膠 (LSR, 液態矽膠)", code: "S" },
+      { name: "石墨/導熱材 (Thermal Pad)", code: "T" },
+      { name: "其他 (未列出之特殊材質)", code: "Z" }
+    ];
+
+    const BOM_COLOR_DATA = [
+      { name: "白色 RAL9003", code: "A" },
+      { name: "白色NCS S 0500-N", code: "B" },
+      { name: "淺灰色NCS S 2000-N", code: "C" },
+      { name: "黑色NCS S 9000-N", code: "D" },
+      { name: "黑色 Pantone Black C", code: "E" },
+      { name: "白色RAL9010", code: "F" },
+      { name: "黑色RAL9011", code: "G" },
+      { name: "EMBER白色 (客戶專用色)", code: "H" },
+      { name: "EMBER黑色 (客戶專用色)", code: "J" },
+      { name: "中灰色 / 石墨灰 Pantone 423 C", code: "K" },
+      { name: "金屬銀 / 亮銀色 Pantone 877 C", code: "L" },
+      { name: "藍灰色 / 冷灰 Pantone 7544 C", code: "M" },
+      { name: "太空灰 Pantone Cool Gray 9 C", code: "N" },
+      { name: "橙色系 / 橘色 Pantone 151 C / RAL 2004", code: "P" },
+      { name: "槍色（鐵灰色）Pantone 8400 C", code: "W" },
+      { name: "玫瑰金 Pantone 10189 C", code: "X" },
+      { name: "金色 Pantone 871 C", code: "Y" },
+      { name: "銀色 (通用噴塗銀)", code: "Z" },
+      { name: "原色 (無加工/本色)", code: "0" },
+      { name: "藍色", code: "2" },
+      { name: "複合色彩", code: "3" },
+      { name: "未歸類白色", code: "4" },
+      { name: "未歸類灰色", code: "5" },
+      { name: "未歸類黑色", code: "6" },
+      { name: "透明、半透明", code: "7" },
+      { name: "無特定顏色", code: "8" },
+      { name: "其他 (特殊色)", code: "9" }
+    ];
+
+    function createBomOptions(dataArray, selectedName) {
+      return `<option value="">--請選擇--</option>` + dataArray.map(item => 
+        `<option value="${item.name}" data-code="${item.code}" ${item.name === selectedName ? 'selected' : ''}>${item.name}</option>`
+      ).join('');
+    }
+
+    // 新增列
+    function addBomRow(status="", model="", cat="", catSeq="1", mat="", moldRev="1", color="", printSeq="0", remark="") {
+      const tbody = document.getElementById("bomTableBody");
+
+      if (!model) {
+        const lastModelInput = tbody.querySelector("tr:last-child .model-code");
+        model = (lastModelInput && lastModelInput.value.trim()) ? lastModelInput.value.trim() : "";
+      }
+
+      const tr = document.createElement("tr");
+
+      tr.innerHTML = `
+        <td class="row-num text-center fw-bold text-muted"></td>
+        <td><select class="form-select status-select" onchange="calculateBom()">${createBomOptions(BOM_STATUS_DATA, status)}</select></td>
+        <td><input type="text" class="form-control model-code text-center" value="${model}" maxlength="4" placeholder="機種" oninput="calculateBom()"></td>
+        <td><select class="form-select cat-select" onchange="calculateBom()">${createBomOptions(BOM_CATEGORY_DATA, cat)}</select></td>
+        <td><input type="text" class="form-control cat-seq text-center" value="${catSeq}" maxlength="1" oninput="calculateBom()"></td>
+        <td><select class="form-select mat-select" onchange="calculateBom()">${createBomOptions(BOM_MATERIAL_DATA, mat)}</select></td>
+        <td><input type="text" class="form-control mold-rev text-center" value="${moldRev}" maxlength="1" oninput="calculateBom()"></td>
+        <td><select class="form-select color-select" onchange="calculateBom()">${createBomOptions(BOM_COLOR_DATA, color)}</select></td>
+        <td><input type="text" class="form-control print-seq text-center" value="${printSeq}" maxlength="1" oninput="calculateBom()"></td>
+        <td><input type="text" class="form-control part-number fw-bold text-primary" readonly></td>
+        <td><textarea class="form-control part-name" rows="2" readonly></textarea></td>
+        <td><textarea class="form-control remark" rows="2" placeholder="客戶料號/說明" oninput="calculateBom()">${remark}</textarea></td>
+        <td class="dup-status text-center"></td>
+        <td class="text-center">
+          <button class="btn btn-outline-warning btn-sm me-1" onclick="clearSingleRow(this)" title="清除本列資料">🧹</button>
+          <button class="btn btn-outline-danger btn-sm" onclick="deleteBomRow(this)" title="刪除本列">🗑️</button>
+        </td>
+      `;
+
+      tbody.appendChild(tr);
+      calculateBom();
+    }
+
+    // 單列資料清除
+    function clearSingleRow(btn) {
+      const tr = btn.closest("tr");
+      tr.querySelector(".status-select").value = "";
+      tr.querySelector(".model-code").value = "";
+      tr.querySelector(".cat-select").value = "";
+      tr.querySelector(".cat-seq").value = "1";
+      tr.querySelector(".mat-select").value = "";
+      tr.querySelector(".mold-rev").value = "1";
+      tr.querySelector(".color-select").value = "";
+      tr.querySelector(".print-seq").value = "0";
+      tr.querySelector(".remark").value = "";
+      calculateBom();
+    }
+
+    // 一鍵清除全部資料
+    function clearAllRows() {
+      if (confirm("確定要清除所有資料並重新開始嗎？")) {
+        document.getElementById("bomTableBody").innerHTML = "";
+        addBomRow();
+        addBomRow();
+        addBomRow();
+      }
+    }
+
+    function deleteBomRow(btn) {
+      btn.closest("tr").remove();
+      calculateBom();
+    }
+
+    function getOptionCode(selectElem) {
+      const opt = selectElem.options[selectElem.selectedIndex];
+      return opt ? (opt.getAttribute("data-code") || "") : "";
+    }
+
+    // 核心算碼與自動調整文字框高度
+    function calculateBom() {
+      const rows = document.querySelectorAll("#bomTableBody tr");
+      const pnList = [];
+
+      rows.forEach((tr, index) => {
+        const displayIndex = index + 1;
+        tr.querySelector(".row-num").innerText = displayIndex;
+
+        const statusCode = getOptionCode(tr.querySelector(".status-select"));
+        const catCode = getOptionCode(tr.querySelector(".cat-select"));
+        const matCode = getOptionCode(tr.querySelector(".mat-select"));
+        const colorCode = getOptionCode(tr.querySelector(".color-select"));
+
+        const model = tr.querySelector(".model-code").value.trim();
+        const catSeq = tr.querySelector(".cat-seq").value.trim();
+        const moldRev = tr.querySelector(".mold-rev").value.trim();
+        const printSeq = tr.querySelector(".print-seq").value.trim();
+        const remark = tr.querySelector(".remark").value.trim();
+
+        // 13 碼完整組裝條件
+        let pn = "";
+        if (statusCode && model && catCode && catSeq !== "" && matCode && moldRev !== "" && colorCode && printSeq !== "") {
+          pn = "M" + statusCode + model + catCode + catSeq + matCode + moldRev + colorCode + printSeq;
+        }
+
+        tr.querySelector(".part-number").value = pn;
+
+        // 自動品名組裝
+        const catName = tr.querySelector(".cat-select").value;
+        const statusName = tr.querySelector(".status-select").value;
+        const colorName = tr.querySelector(".color-select").value;
+
+        let desc = "";
+        if (catName || model) {
+          desc = `SA-${model} ${catName} ${statusName}`.trim();
+          if (colorName) desc += ` , ${colorName}`;
+          if (remark) desc += ` , ${remark}`;
+        }
+        
+        const nameTextarea = tr.querySelector(".part-name");
+        nameTextarea.value = desc;
+
+        // 動態高度調整
+        nameTextarea.style.height = 'auto';
+        nameTextarea.style.height = (nameTextarea.scrollHeight) + 'px';
+
+        pnList.push({ rowNum: displayIndex, pn: pn, element: tr });
+      });
+
+      // 重複料號檢查
+      pnList.forEach(item => {
+        const tr = item.element;
+        const dupTd = tr.querySelector(".dup-status");
+
+        if (!item.pn) {
+          dupTd.innerHTML = "";
+          tr.classList.remove("duplicate-row");
+          return;
+        }
+
+        const matchedRows = pnList.filter(x => x.pn === item.pn).map(x => x.rowNum);
+
+        if (matchedRows.length > 1) {
+          dupTd.innerHTML = `<span class="warning-text">⚠️ 第 ${matchedRows.join('、')} 行重複</span>`;
+          tr.classList.add("duplicate-row");
+        } else {
+          dupTd.innerHTML = `<span class="normal-text">✅ 正常</span>`;
+          tr.classList.remove("duplicate-row");
+        }
+      });
+    }
+
+    // 匯出 CSV (Excel)
+    function exportBomCSV() {
+      let csv = "\uFEFF";
+      csv += "行號,產品狀態,機種代號,分件別,分件流水號,材質,修模次數,顏色,印刷流水號,13碼料號,自動品名,備註\n";
+
+      const rows = document.querySelectorAll("#bomTableBody tr");
+      rows.forEach((tr, i) => {
+        const rowData = [
+          i + 1,
+          `"${tr.querySelector(".status-select").value}"`,
+          `"${tr.querySelector(".model-code").value}"`,
+          `"${tr.querySelector(".cat-select").value}"`,
+          `"${tr.querySelector(".cat-seq").value}"`,
+          `"${tr.querySelector(".mat-select").value}"`,
+          `"${tr.querySelector(".mold-rev").value}"`,
+          `"${tr.querySelector(".color-select").value}"`,
+          `"${tr.querySelector(".print-seq").value}"`,
+          `"${tr.querySelector(".part-number").value}"`,
+          `"${tr.querySelector(".part-name").value.replace(/"/g, '""')}"`,
+          `"${tr.querySelector(".remark").value.replace(/"/g, '""')}"`
+        ];
+        csv += rowData.join(",") + "\n";
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `13碼_BOM料號清單_${new Date().toISOString().slice(0,10)}.csv`;
+      link.click();
+    }
+
+    // 頁面初始化
+    window.onload = function() {
+      addBomRow();
+      addBomRow();
+      addBomRow();
+    };
+  </script>
+</body>
+</html>
