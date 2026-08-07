@@ -203,8 +203,8 @@
       ).join('');
     }
 
-    // 新增列
-    function addBomRow(status="", model="", cat="", catSeq="1", mat="", moldRev="1", color="", printSeq="0", remark="") {
+    // 新增列 (將 moldRev 預設值調整為 "0")
+    function addBomRow(status="", model="", cat="", catSeq="1", mat="", moldRev="0", color="", printSeq="0", remark="") {
       const tbody = document.getElementById("bomTableBody");
 
       if (!model) {
@@ -238,7 +238,7 @@
       calculateBom();
     }
 
-    // 單列資料清除
+    // 單列資料清除 (修模次數重置為 "0")
     function clearSingleRow(btn) {
       const tr = btn.closest("tr");
       tr.querySelector(".status-select").value = "";
@@ -246,7 +246,7 @@
       tr.querySelector(".cat-select").value = "";
       tr.querySelector(".cat-seq").value = "1";
       tr.querySelector(".mat-select").value = "";
-      tr.querySelector(".mold-rev").value = "1";
+      tr.querySelector(".mold-rev").value = "0";
       tr.querySelector(".color-select").value = "";
       tr.querySelector(".print-seq").value = "0";
       tr.querySelector(".remark").value = "";
